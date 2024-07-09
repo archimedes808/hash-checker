@@ -1,3 +1,4 @@
 .idea/
 *.dat
 config.yml
+/results.csv

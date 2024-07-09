@@ -4,6 +4,7 @@ import os
 import yaml
 import jsonschema
 from pprint import PrettyPrinter
+import csv
 
 # TODO: Verify if all files from game are present resp['datafile']['game'][0]['rom']
 # TODO: put results in CSV
@@ -105,7 +106,7 @@ def filter_by_region(game_dict, region):
     return filtered_list
 
 
-def get_discs(directory):
+def get_rom_files(directory):
     """
     Returns a list of dictionaries with 'path' and 'filename' keys for all .bin and .cue files in the specified directory.
 
@@ -153,35 +154,53 @@ def find_partial_match(local_filename, hash_matches) -> str:
 def verify_file(local_file: dict, game_hashes) -> dict:
     ret = {'local_filename': local_file['filename'], 'md5_filename': '', 'alternate_filenames': []}
     md5_hash = get_md5_hash(local_file['path'])
-    hash_matches = lookup_disc_by_md5(game_hashes, md5_hash, local_file['filename'])
-    filename_match = verify_filename_match(local_file['filename'], hash_matches)
+    matching_hashes = lookup_disc_by_md5(game_hashes, md5_hash, local_file['filename'])
+    filename_match = verify_filename_match(local_file['filename'], matching_hashes)
     if filename_match:
-        ret['md5_filename'] = hash_matches[0]['track_name']
+        ret['md5_filename'] = matching_hashes[0]['track_name']
+        result = 'full_match'
     else:
-        partial_match = find_partial_match(local_file['filename'], hash_matches)
+        partial_match = find_partial_match(local_file['filename'], matching_hashes)
         if partial_match:
             ret['md5_filename'] = partial_match
-        ret['alternate_filenames'] = hash_matches
-    ret['filename_match'] = filename_match
-    ret['md5_match'] = bool(hash_matches)
+            result = 'filename_mismatch'
+        else:
+            result = 'no_matching_hash'
+        ret['alternate_filenames'] = matching_hashes
+    updates = {'filename_match': filename_match, 'md5_match': bool(matching_hashes), 'result': result}
+    ret.update(updates)
     return ret
+
+
+def write_dicts_to_csv(dict_list, csv_file_path):
+    if not dict_list:
+        print("The list is empty.")
+        return
+
+    # Get the keys from the first dictionary as the header
+    keys = list(dict_list[0].keys())
+    keys.remove('alternate_filenames')
+    keys.append('alternate_filenames')  # Make alternate filenames appear last in CSV
+
+    with open(csv_file_path, 'w', newline='') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=keys)
+        writer.writeheader()
+        writer.writerows(dict_list)
 
 
 def main():
     config = load_config()
     resp = xml_to_dict(config['dat_file_path'])
     usa_only = filter_by_region(resp, 'USA')
-    discs = get_discs(config['roms_dir_path'])
-    results = {'pass': {}, 'partial_pass': {}, 'fail': {}}
-    for disc in discs:
-        result = verify_file(disc, usa_only)
-        if result['md5_match'] and result['filename_match']:
-            results['pass'][result['local_filename']] = result
-        elif result['md5_match']:
-            results['partial_pass'][result['local_filename']] = result
-        else:
-            results['fail'][result['local_filename']] = result
-    PrettyPrinter().pprint(results)
+    rom_files = get_rom_files(config['roms_dir_path'])
+    results = {'full_match': {}, 'filename_mismatch': {}, 'no_matching_hash': {}}
+    flat_results = []
+    for file in rom_files:
+        result = verify_file(file, usa_only)
+        flat_results.append(result)
+        results[result['result']].update({file['filename']: result})
+    write_dicts_to_csv(flat_results, 'results.csv')
+    PrettyPrinter().pprint(flat_results)
 
 
 if __name__ == '__main__':
