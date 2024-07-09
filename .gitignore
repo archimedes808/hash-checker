@@ -2,3 +2,4 @@
 *.dat
 config.yml
 /results.csv
+/venv/
