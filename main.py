@@ -5,6 +5,8 @@ import yaml
 import jsonschema
 from pprint import PrettyPrinter
 import csv
+import zipfile
+
 
 # TODO: Verify if all files from game are present resp['datafile']['game'][0]['rom']
 # TODO: put results in CSV
@@ -188,8 +190,36 @@ def write_dicts_to_csv(dict_list, csv_file_path):
         writer.writerows(dict_list)
 
 
+def user_prompt(question: str, answers: list) -> str:
+    while True:
+        response = input(question)
+        if response not in answers:
+            print(f"Invalid input. Must be one of {str(answers)}.")
+        else:
+            return response
+
+
+def extract_zip_files(directory) -> bool:
+    if user_prompt('Extract zip files? y/n:', ['y', 'n']) == 'y':
+        # List all files in the given directory
+        for file_name in os.listdir(directory):
+            # Check if the file is a ZIP file
+            if file_name.endswith('.zip'):
+                # Construct full file path
+                file_path = os.path.join(directory, file_name)
+                # Open the ZIP file
+                with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                    # Extract all the contents of the ZIP file into the directory
+                    zip_ref.extractall(directory)
+                    print(f"Extracted {file_name} in {directory}")
+        return True
+    else:
+        return False
+
+
 def main():
     config = load_config()
+    extract_zip_files(config['roms_dir_path'])
     resp = xml_to_dict(config['dat_file_path'])
     usa_only = filter_by_region(resp, 'USA')
     rom_files = get_rom_files(config['roms_dir_path'])
